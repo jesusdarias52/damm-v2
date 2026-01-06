@@ -80,27 +80,33 @@ pub fn shl_div_256(x: u128, y: u128, offset: u8) -> Option<U256> {
 }
 
 /// (x * y) / denominator
+#[inline(always)]
 pub fn mul_div_u256(x: U256, y: U256, denominator: U256, rounding: Rounding) -> Option<U256> {
-    if denominator == U256::ZERO {
-        return None;
-    }
+    if denominator == U256::ZERO { return None; }
+    if x == U256::ZERO || y == U256::ZERO { return Some(U256::ZERO); }
 
-    let x = U512::from(x);
-    let y = U512::from(y);
-    let denominator = U512::from(denominator);
-
-    let prod = x.checked_mul(y)?;
-
-    let result = match rounding {
-        Rounding::Up => prod.div_ceil(denominator),
-        Rounding::Down => {
-            let (quotient, _) = prod.div_rem(denominator);
-            quotient
+    if let Some(prod) = x.checked_mul(y) {
+        match rounding {
+            Rounding::Down => Some(prod / denominator),
+            Rounding::Up => {
+                let q = prod / denominator;
+                if prod % denominator == U256::ZERO { Some(q) }
+                else { q.checked_add(U256::from(1u8)) }
+            }
         }
-    };
-    if result > U512::from(U256::MAX) {
-        None
     } else {
-        Some(U256::from(result))
+        // Fallback to your existing U512 path
+        let x = U512::from(x);
+        let y = U512::from(y);
+        let denominator = U512::from(denominator);
+        let prod = x.checked_mul(y)?;
+        let result = match rounding {
+            Rounding::Up => prod.div_ceil(denominator),
+            Rounding::Down => {
+                let (q, _) = prod.div_rem(denominator);
+                q
+            }
+        };
+        if result > U512::from(U256::MAX) { None } else { Some(U256::from(result)) }
     }
 }
